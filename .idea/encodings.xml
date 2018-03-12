@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/src/main/java/data/ConflictTuple.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/data/Conflicts.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/data/DataSet.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/data/Domain.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/data/ProbAttribute.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/data/Rule.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/data/Tuple.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/tuffy" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/tuffy/ground/Grounding.java" charset="GBK" />
+    <file url="file://$PROJECT_DIR$/src/main/java/tuffy/learn/package.html" charset="UTF-8" />
+  </component>
+</project>
