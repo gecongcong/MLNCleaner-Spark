@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import data.Clause;
 import scala.Tuple2;
 import tuffy.learn.DNLearner;
 import tuffy.learn.MultiCoreSGDLearner;
@@ -16,9 +17,9 @@ import tuffy.util.UIMan;
  */
 public class MLNmain {
 	
-	public static ArrayList<Tuple2<String, Double>> main(String[] args) throws SQLException, IOException {
+	public static ArrayList<Clause> main(String[] args) throws SQLException, IOException {
 
-		ArrayList<Tuple2<String, Double>> attributes = null;
+		ArrayList<Clause> attributes = null;
 		//BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 		/*String[] str = null;
 		try {

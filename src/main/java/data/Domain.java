@@ -6,6 +6,7 @@ import org.apache.hadoop.fs.*;
 import spellchecker.SpellChecker;
 
 import java.io.*;
+import java.lang.reflect.Array;
 import java.net.URI;
 import java.util.*;
 import java.util.Map.Entry;
@@ -13,11 +14,13 @@ import java.util.Map.Entry;
 public class Domain implements Serializable {
 
     public static double MIN_DOUBLE = 0.0001;
+    public static double MIN_NEGNATIVE = -9;
+    public static double MAX_NEGNATIVE = -99999999;
     public static double MAX_DOUBLE = 9999;
 
     public static double THRESHOLD = 0.01;
 
-    public static int AVGNum = 1;
+    public static int AVGNum = 3;
 
     public HashMap<Integer, String[]> dataSet = new HashMap<>();
     public HashMap<Integer, ArrayList<String>> dataSet_noIgnor = new HashMap<>();
@@ -28,7 +31,8 @@ public class Domain implements Serializable {
     //属性列，如果数据集中没有给出，则构造一个属性列：Attr1,Attr2,Attr3,...,AttrN
     public static String[] header = null;
 
-    public Domain() {}
+    public Domain() {
+    }
 
     // 这个函数的作用是创造 mln 文件。
 //	public void createMLN(String[] header, String rulesURL){
@@ -72,174 +76,168 @@ public class Domain implements Serializable {
 //		}
 //	}
 
+    /**
+     * transform string_data to tuple_data format
+     */
+    public ArrayList<Tuple> transformToTuple(String str, List<Tuple> rules, ArrayList<Integer> ignoreIDs, String[] header) {
+        ArrayList<Tuple> tuples = new ArrayList<>();
+        int key = Integer.parseInt(str.substring(0, str.indexOf(",")));
+        String[] tuple = str.substring(str.indexOf(",") + 1).split(",");
+        int rules_size = rules.size();
+        for (int i = 0; i < rules_size; i++) {
+            Tuple curr_rule = rules.get(i);
+            String[] attributeNames = curr_rule.getAttributeNames();
+            int[] IDs = Rule.findAttributeIndex(attributeNames, header);
+            String[] reason = curr_rule.reason;
+            String[] result = curr_rule.result;
+            int[] reasonIDs = Rule.findAttributeIndex(reason, header);
+            int[] resultIDs = Rule.findResultIDs(IDs, reasonIDs);
+            String[] reasonContent = new String[reasonIDs.length];
+            String[] resultContent = new String[resultIDs.length];
+            String[] tupleContext = new String[IDs.length];
+            int[] tupleContextID = new int[IDs.length];
+
+            int reason_index = 0;
+            int result_index = 0;
+
+            for (int j = 0; j < IDs.length; j++) {
+                tupleContext[j] = tuple[IDs[j]];//放入属于该区域的tuple内容
+                tupleContextID[j] = IDs[j];    //放入对应的ID
+                if (ifReason(IDs[j], reasonIDs)) {    //如果是reason,则放入reasonContent
+                    reasonContent[reason_index++] = tuple[IDs[j]];
+                } else {
+                    resultContent[result_index++] = tuple[IDs[j]];
+                }
+            }
+
+            Tuple t = new Tuple();
+            t.tupleID = key;
+            t.setContext(tupleContext);
+            t.setAttributeIndex(tupleContextID);
+
+            t.setReason(reasonContent);
+            t.setReasonAttributeIndex(reasonIDs);
+
+            t.setResult(resultContent);
+            t.setResultAttributeIndex(resultIDs);
+
+            t.setAttributeNames(attributeNames);
+            tuples.add(t);
+        }
+        return tuples;
+    }
+
+
+    /**
+     * init domain
+     */
+    public int init(Tuple tuple, List<Tuple> rules) {
+        int domain_index = 0;
+        for (int i = 0; i < rules.size(); i++) {
+            Tuple rule = rules.get(i);//compact reason and result in rule with tuple
+            String[] rule_attributeNames = rule.getAttributeNames();
+            String[] tuple_attributeNames = tuple.AttributeNames;
+            String[] copy_array_rule = new String[rule_attributeNames.length];
+            String[] copy_array_tuple = new String[tuple_attributeNames.length];
+            System.arraycopy(tuple_attributeNames, 0, copy_array_rule, 0, rule_attributeNames.length);
+            System.arraycopy(tuple_attributeNames, 0, copy_array_tuple, 0, tuple_attributeNames.length);
+            Arrays.sort(rule_attributeNames);
+            Arrays.sort(tuple_attributeNames);
+            String rule_str = Arrays.toString(rule_attributeNames);
+            String tuple_str = Arrays.toString(tuple_attributeNames);
+            if(rule_str.equals(tuple_str)){
+                domain_index = i;
+            }
+        }
+        return domain_index;
+    }
 
     /**
      * 按rules对数据集进行纵向划分 Partition DataSet into Domains
-     *
-     * @param fileURL
-     * @param splitString
-     * @param ifHeader
-     * @param rules
      */
-    public HashMap<Integer, String[]> init(String fileURL, String splitString, boolean ifHeader, List<Tuple> rules,
+    public HashMap<Integer, String[]> init(ArrayList<String> dataset_list, String splitString, List<Tuple> rules,
                                            List<HashMap<String, ArrayList<Integer>>> convert_domains, ArrayList<Integer> ignoreIDs) {
-        // read file content from file 读取文件内容
+
         int rules_size = rules.size();
+//        HashMap<Integer, String[]> dataSet = new HashMap<>();
         domains = new ArrayList<>(rules_size);
 
         for (int i = 0; i < rules_size; i++) {
             domains.add(new HashMap<>());
             convert_domains.add(new HashMap<>());
         }
-        try {
-            Configuration conf = new Configuration();
-            FileSystem fs = FileSystem.get(URI.create(fileURL), conf);
-
-            FSDataInputStream is = fs.open(new Path(fileURL));
-            BufferedReader br = new BufferedReader(new InputStreamReader(is));
-            String str = null;
-            int key; //tuple index
-
-            if (ifHeader && (str = br.readLine()) != null) {  //The data has header
-                //   	header=str.split(splitString);
-                while ((str = br.readLine()) != null) {
-                    //	System.out.println(str);
-                    //dataSet.add(str.split(splitString));
-//                    str = str.replaceAll(" ", "");
-                    key = Integer.parseInt(str.substring(0, str.indexOf(",")));
-                    String[] tuple = str.substring(str.indexOf(",") + 1).split(",");
-                    dataSet.put(key, tuple);
-                    ArrayList<String> tuple_noIgnor = new ArrayList(tuple.length - ignoreIDs.size());
-                    for (String s : tuple) {
-                        tuple_noIgnor.add(s);
-                    }
-                    for (int id : ignoreIDs) {
-                        tuple_noIgnor.remove(tuple[id]);
-                    }//tuple_noIgnor中不包含被ignored的属性
-                    dataSet_noIgnor.put(key, tuple_noIgnor);
-
-                    //为每一条rule划分数据集区域Di
-                    for (int i = 0; i < rules_size; i++) {
-                        Tuple curr_rule = rules.get(i);
-                        String[] attributeNames = curr_rule.getAttributeNames();
-                        int[] IDs = Rule.findAttributeIndex(attributeNames, header);
-                        String[] reason = curr_rule.reason;
-                        String[] result = curr_rule.result;
-                        int[] reasonIDs = Rule.findAttributeIndex(reason, header);
-                        int[] resultIDs = Rule.findResultIDs(IDs, reasonIDs);
-                        String[] reasonContent = new String[reasonIDs.length];
-                        String[] resultContent = new String[resultIDs.length];
-                        String[] tupleContext = new String[IDs.length];
-                        int[] tupleContextID = new int[IDs.length];
-
-                        int reason_index = 0;
-                        int result_index = 0;
-
-                        for (int j = 0; j < IDs.length; j++) {
-                            tupleContext[j] = tuple[IDs[j]];//放入属于该区域的tuple内容
-                            tupleContextID[j] = IDs[j];    //放入对应的ID
-                            if (ifReason(IDs[j], reasonIDs)) {    //如果是reason,则放入reasonContent
-                                reasonContent[reason_index++] = tuple[IDs[j]];
-                            } else {
-                                resultContent[result_index++] = tuple[IDs[j]];
-                            }
-                        }
-
-                        Tuple t = new Tuple();
-                        t.tupleID = key;
-                        t.setContext(tupleContext);
-                        t.setAttributeIndex(tupleContextID);
-
-                        t.setReason(reasonContent);
-                        t.setReasonAttributeIndex(reasonIDs);
-
-                        t.setResult(resultContent);
-                        t.setResultAttributeIndex(resultIDs);
-
-                        t.setAttributeNames(attributeNames);
-
-                        //区域Di划分完毕,放入hashMap
-                        domains.get(i % rules_size).put(key, t); //<K,V>  K = tuple ID , from 0 to n
-                        String reason_content = "";
-                        for (int k = 0; k < reasonContent.length; k++) {
-                            reason_content += reasonContent[k];
-                            if (k != reasonContent.length - 1) {
-                                reason_content += ",";
-                            }
-                        }
-                        if (convert_domains.get(i % rules_size).get(reason_content) != null) {
-                            convert_domains.get(i % rules_size).get(reason_content).add(t.tupleID);
-                        } else {
-                            ArrayList<Integer> ids = new ArrayList<>();
-                            ids.add(t.tupleID);
-                            convert_domains.get(i % rules_size).put(reason_content, ids);
-                        }
-                    }
-                    //key++;
-                }
-            } else {
-                int length = 0;
-//	        	boolean flag = false;
-                while ((str = br.readLine()) != null) {
-                    //dataSet.add(str.split(splitString));
-                    key = Integer.parseInt(str.substring(0, str.indexOf(",")));
-                    String[] tuple = str.substring(str.indexOf(",") + 1).split(",");
-                    dataSet.put(key, tuple);
-
-                    for (int i = 0; i < rules_size; i++) {    //为每一条rule划分数据集区域Di
-                        Tuple curr_rule = rules.get(i);
-                        String[] attributeNames = curr_rule.getAttributeNames();
-
-                        int[] IDs = Rule.findAttributeIndex(attributeNames, header);
-
-                        String[] reason = curr_rule.reason;
-//                        String[] result = curr_rule.result;
-
-                        int[] reasonIDs = Rule.findAttributeIndex(reason, header);
-                        int[] resultIDs = Rule.findResultIDs(IDs, reasonIDs);
-                        String[] reasonContent = new String[reasonIDs.length];
-                        String[] resultContent = new String[resultIDs.length];
-                        String[] tupleContext = new String[IDs.length];
-
-                        int[] tupleContextID = new int[IDs.length];
-
-                        int reason_index = 0;
-                        int result_index = 0;
-                        for (int j = 0; j < IDs.length; j++) {
-                            tupleContext[j] = tuple[IDs[j]];//放入属于该区域的tuple内容
-                            tupleContextID[j] = IDs[j];    //放入对应的ID
-                            if (ifReason(IDs[j], reasonIDs)) {    //如果是reason,则放入reasonContent
-                                reasonContent[reason_index++] = tuple[IDs[j]];
-                            } else {
-                                resultContent[result_index++] = tuple[IDs[j]];
-                            }
-                        }
-
-                        Tuple t = new Tuple();
-                        t.setContext(tupleContext);
-                        t.setAttributeIndex(tupleContextID);
-                        t.setReason(reasonContent);
-
-                        t.setReasonAttributeIndex(reasonIDs);
-
-                        t.setResult(resultContent);
-                        t.setResultAttributeIndex(resultIDs);
-                        t.setAttributeNames(attributeNames);
-                        //一个 t 是 一个 区域
-                        //区域Di划分完毕,放入hashMap
-                        domains.get(i % rules_size).put(key, t); //<K,V>  K = tuple ID , from 0 to n
-                    }
-                    key++;
-                }
-                System.out.println("header length = " + length);
+        int key; //tuple index
+        for(String str: dataset_list){
+            key = Integer.parseInt(str.substring(0, str.indexOf(",")));
+            String[] tuple = str.substring(str.indexOf(",") + 1).split(",");
+            dataSet.put(key, tuple);
+            ArrayList<String> tuple_noIgnor = new ArrayList(tuple.length - ignoreIDs.size());
+            for (String s : tuple) {
+                tuple_noIgnor.add(s);
             }
+            for (int id : ignoreIDs) {
+                tuple_noIgnor.remove(tuple[id]);
+            }//tuple_noIgnor中不包含被ignored的属性
+            dataSet_noIgnor.put(key, tuple_noIgnor);
 
-            br.close();
-            is.close();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
+            //为每一条rule划分数据集区域Di
+            for (int i = 0; i < rules_size; i++) {
+                Tuple curr_rule = rules.get(i);
+                String[] attributeNames = curr_rule.getAttributeNames();
+                int[] IDs = Rule.findAttributeIndex(attributeNames, header);
+                String[] reason = curr_rule.reason;
+                String[] result = curr_rule.result;
+                int[] reasonIDs = Rule.findAttributeIndex(reason, header);
+                int[] resultIDs = Rule.findResultIDs(IDs, reasonIDs);
+                String[] reasonContent = new String[reasonIDs.length];
+                String[] resultContent = new String[resultIDs.length];
+                String[] tupleContext = new String[IDs.length];
+                int[] tupleContextID = new int[IDs.length];
+
+                int reason_index = 0;
+                int result_index = 0;
+
+                for (int j = 0; j < IDs.length; j++) {
+                    tupleContext[j] = tuple[IDs[j]];//放入属于该区域的tuple内容
+                    tupleContextID[j] = IDs[j];    //放入对应的ID
+                    if (ifReason(IDs[j], reasonIDs)) {    //如果是reason,则放入reasonContent
+                        reasonContent[reason_index++] = tuple[IDs[j]];
+                    } else {
+                        resultContent[result_index++] = tuple[IDs[j]];
+                    }
+                }
+
+                Tuple t = new Tuple();
+                t.tupleID = key;
+                t.setContext(tupleContext);
+                t.setAttributeIndex(tupleContextID);
+
+                t.setReason(reasonContent);
+                t.setReasonAttributeIndex(reasonIDs);
+
+                t.setResult(resultContent);
+                t.setResultAttributeIndex(resultIDs);
+
+                t.setAttributeNames(attributeNames);
+
+                //区域Di划分完毕,放入hashMap
+                domains.get(i % rules_size).put(key, t); //<K,V>  K = tuple ID , from 0 to n
+                String reason_content = "";
+                for (int k = 0; k < reasonContent.length; k++) {
+                    reason_content += reasonContent[k];
+                    if (k != reasonContent.length - 1) {
+                        reason_content += ",";
+                    }
+                }
+                if (convert_domains.get(i % rules_size).get(reason_content) != null) {
+                    convert_domains.get(i % rules_size).get(reason_content).add(t.tupleID);
+                } else {
+                    ArrayList<Integer> ids = new ArrayList<>();
+                    ids.add(t.tupleID);
+                    convert_domains.get(i % rules_size).put(reason_content, ids);
+                }
+            }
+            //key++;
         }
         return dataSet;
     }
@@ -313,11 +311,11 @@ public class Domain implements Serializable {
             List<HashMap<Integer, Tuple>> groups = new ArrayList<>();
             List<Tuple> outlierTuple = new ArrayList<>();
 
-            if (i == 0) {
+            /*if (i == 0) {
                 AVGNum = 1;
             } else if (i == 1) {
                 AVGNum = 5;
-            }
+            }*/
 
             Iterator<Entry<String, ArrayList<Integer>>> c_iter = convert_domain.entrySet().iterator();
             while (c_iter.hasNext()) {
@@ -386,7 +384,7 @@ public class Domain implements Serializable {
 
         //HashMap<String, Double> attributesPROB = attributesPROBList.get(0);
         int top_k = 1;
-        int MAXSORTSIZE = 1;
+        int MAXSORTSIZE = 2;
 
         //convert domain_outlier(List) to HashSet
         HashSet<Integer> hashSet = new HashSet<>();
@@ -430,14 +428,15 @@ public class Domain implements Serializable {
                     Cosine cosine = new Cosine();
 
                     double t_dis = cosine.distance(out_reason, reason);
-                    if (i == 0) {
+                    if (t_dis > 0.19) continue;
+                    /*if (i == 0) {
                         t_dis = SpellChecker.distance(out_reason, reason);
                         if (t_dis > 0.05) continue;
                     }
                     if (i == 1) {
                         t_dis = cosine.distance(out_reason, reason);
-                        if (t_dis > 1) continue;
-                    }
+                        if (t_dis > 0.15) continue;
+                    }*/
                     int key = entry.getValue().get(0);//记录该group中的任意一个tupleID
                     int num = entry.getValue().size();
                     DistanceInfo disInfo = new DistanceInfo(key, t_dis, num);
@@ -591,7 +590,7 @@ public class Domain implements Serializable {
                 NormalizedLevenshtein l = new NormalizedLevenshtein();
                 JaroWinkler jw = new JaroWinkler();
                 QGram qGram = new QGram();*/
-                double distance = cosine.distance(tuple, tmp_candidate);
+                double distance = SpellChecker.distance(tuple, tmp_candidate);
                 int N = replaceNCost(tmp_candidate, tupleList);
                 double tmp_cost = distance * N;
                 if (tmp_cost < dis) {
@@ -616,11 +615,10 @@ public class Domain implements Serializable {
     /**
      * 根据MLN的概率修正错误数据
      */
-    public void correctByMLN(List<List<HashMap<Integer, Tuple>>> Domain_to_Groups, List<HashMap<String, Double>> attributesPROBList, String[] header, List<HashMap<Integer, Tuple>> domains) {
+    public void correctByMLN(List<List<HashMap<Integer, Tuple>>> Domain_to_Groups, HashMap<String, Clause> attributesPROB, String[] header, List<HashMap<Integer, Tuple>> domains) {
         int DGindex = 0;
 
         for (List<HashMap<Integer, Tuple>> groups : Domain_to_Groups) {
-//			System.out.println("---------------"+(DGindex+1)+"--------------------");
 
             for (int i = 0; i < groups.size(); i++) {
                 HashMap<Integer, Tuple> group = groups.get(i);
@@ -628,45 +626,42 @@ public class Domain implements Serializable {
 
                 HashMap<String, Candidate> cMap = spellCheck(group);
 
-                for (int t = 0; t < attributesPROBList.size(); t++) {
-                    HashMap<String, Double> attributesPROB = attributesPROBList.get(t);
+                Iterator<Entry<Integer, Tuple>> iter1 = group.entrySet().iterator();
+                double pre_cost = MAX_NEGNATIVE;
+                int tupleID = 0;
 
-                    Iterator<Entry<Integer, Tuple>> iter = group.entrySet().iterator();
-                    double pre_cost = 0.0f;
-                    int tupleID = 0;
+                //遍历group
+                while (iter1.hasNext()) {
+                    Entry<Integer, Tuple> current = iter1.next();
+                    Tuple tuple = current.getValue();
+                    int length = tuple.getContext().length;
+                    String[] tmp_context = new String[length];
+                    System.arraycopy(tuple.getContext(), 0, tmp_context, 0, length);
+                    Arrays.sort(tmp_context);
+                    String values = Arrays.toString(tmp_context);
+                    Clause clause = attributesPROB.get(values);
+                    Double prob = null;
+                    if (clause == null) {
+                        prob = MIN_DOUBLE;    //说明这个团只在数据集里出现过一次，姑且认为该团不具代表性，概率置0
+                    }else prob = Double.parseDouble(clause.getWeight());
+                    Candidate c = cMap.get(values);
+                    String candidate = c.candidate;
 
-                    //遍历group
-                    while (iter.hasNext()) {
-                        Entry<Integer, Tuple> current = iter.next();
-                        Tuple tuple = current.getValue();
-                        int length = tuple.getContext().length;
-                        String[] tmp_context = new String[length];
-                        System.arraycopy(tuple.getContext(), 0, tmp_context, 0, length);
-                        Arrays.sort(tmp_context);
-                        String values = Arrays.toString(tmp_context);
-
-                        Double prob = attributesPROB.get(values);
-                        Candidate c = cMap.get(values);
-                        String candidate = c.candidate;
-                        if (prob == null) {
-                            prob = MIN_DOUBLE;    //说明这个团只在数据集里出现过一次，姑且认为该团不具代表性，概率置0
-                        }
-                        double cost;
-                        if (c.cost == 0) {
-                            cost = MIN_DOUBLE;
-                        } else
-                            cost = prob * c.cost;
-                        if (cost > pre_cost) {
-                            pre_cost = cost;
-                            tupleID = tuple.tupleID;
+                    double cost;
+                    if (c.cost == 0) {
+                        cost = MIN_DOUBLE;
+                    } else
+                        cost = prob * c.cost;
+                    if (cost > pre_cost) {
+                        pre_cost = cost;
+                        tupleID = tuple.tupleID;
 //                            tupleID = c.tupleID;
-                        }
                     }
-                    if (weight.get(tupleID) == null)
-                        weight.put(tupleID, 1);
-                    else {
-                        weight.put(tupleID, weight.get(tupleID) + 1);
-                    }
+                }
+                if (weight.get(tupleID) == null)
+                    weight.put(tupleID, 1);
+                else {
+                    weight.put(tupleID, weight.get(tupleID) + 1);
                 }
                 // 如何找出作为基准的tupleID
                 int resultNum = 0;
@@ -688,8 +683,8 @@ public class Domain implements Serializable {
                     while (iter.hasNext()) {
                         Entry<Integer, Tuple> current = iter.next();
                         Tuple copyT = cleanTuple;
-                        String[] reason = copyT.reason;
-                        if (DGindex == 0 && !Arrays.toString(reason).contains("acura")) continue;
+//                        String[] reason = copyT.reason;
+//                        if (DGindex == 0 && !Arrays.toString(reason).contains("acura")) continue;
 //                        Tuple copyT = copyTuple(cleanTuple);
 //                        copyT.tupleID = current.getKey();
                         group.put(current.getKey(), copyT);
@@ -1098,7 +1093,7 @@ public class Domain implements Serializable {
     /**
      * 为冲突元组找到候选的替换方案(new)
      */
-    public void findCandidate(ArrayList<Integer> conflicts, List<HashMap<Integer, Tuple>> domains, HashMap<String, Double> attributesPROB, ArrayList<Integer> ignoredIDs) {
+    public void findCandidate(ArrayList<Integer> conflicts, List<HashMap<Integer, Tuple>> domains, HashMap<String, Clause> attributesPROB, ArrayList<Integer> ignoredIDs) {
 
         for (Integer id : conflicts) {
             double prob = -1;
@@ -1138,7 +1133,10 @@ public class Domain implements Serializable {
                                     System.arraycopy(t.getContext(), 0, tmp_context, 0, t.getContext().length);
                                     Arrays.sort(tmp_context);
                                     String value = Arrays.toString(tmp_context);
-                                    Double curr_prob = attributesPROB.get(value);
+                                    Clause clause = attributesPROB.get(value);
+                                    Double curr_prob = null;
+                                    if(clause!=null)
+                                        curr_prob = Double.parseDouble(clause.getWeight());
 
                                     if (curr_prob == null) {
                                         curr_prob = MIN_DOUBLE;
@@ -1181,7 +1179,11 @@ public class Domain implements Serializable {
                     String[] tmp_context = new String[value.length];
                     System.arraycopy(value, 0, tmp_context, 0, value.length);
                     Arrays.sort(tmp_context);
-                    Double curr_prob = attributesPROB.get(Arrays.toString(tmp_context));
+                    Clause clause = attributesPROB.get(Arrays.toString(tmp_context));
+                    Double curr_prob = null;
+                    if (clause == null) {
+                        curr_prob = MIN_DOUBLE;    //说明这个团只在数据集里出现过一次，姑且认为该团不具代表性，概率置0
+                    }else curr_prob = Double.parseDouble(clause.getWeight());
                     if (null == curr_prob) {
                         curr_prob = MIN_DOUBLE;
                     }
@@ -1637,7 +1639,7 @@ public class Domain implements Serializable {
         for (int i = 0; i < groups.size(); i++) {
             group = groups.get(i);
             Iterator iter = group.entrySet().iterator();
-            if(i==76){
+            if (i == 76) {
                 System.out.println("\n---------Group " + (i + 1) + "---------");
 
                 while (iter.hasNext()) {

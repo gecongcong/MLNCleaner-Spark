@@ -131,10 +131,10 @@ public abstract class Learner extends Infer {
 	 * @throws IOException 
 	 */
 	@SuppressWarnings("unchecked")
-	public ArrayList<Tuple2<String, Double>> run(CommandOptions opt) throws SQLException, IOException{
+	public ArrayList<data.Clause> run(CommandOptions opt) throws SQLException, IOException{
 		// tally clause
 
-		ArrayList<Tuple2<String, Double>> attributes = null;
+		ArrayList<data.Clause> attributes = null;
 
 		Config.learning_mode = true;
 		Config.stop_samplesat_upon_sat = true;
@@ -298,8 +298,8 @@ public abstract class Learner extends Infer {
 	 * Dump the learning result to file {@link CommandOptions#fout}.
 	 * The format of this file is consistent with inference part.
 	 */
-	public ArrayList<Tuple2<String, Double>> dumpAnswers(String fout){
-		ArrayList<Tuple2<String, Double>> attributes = new ArrayList<>();
+	public ArrayList<data.Clause> dumpAnswers(String fout){
+		ArrayList<data.Clause> attributes = new ArrayList<>();
 
 		ArrayList<String> lines = new ArrayList<String>();
 		DecimalFormat twoDForm = new DecimalFormat("#.####");
@@ -342,7 +342,7 @@ public abstract class Learner extends Infer {
 			}else{
 				//System.out.println("~~~" + sid + "~~~~" + Learner.finalWeight.get(s));
 				if(Clause.mappingFromID2Desc.get(sid)==null)continue;
-				attributes.add(new Tuple2<>(Clause.mappingFromID2Desc.get(sid),Double.parseDouble(twoDForm.format(Learner.finalWeight.get(s)))));
+				attributes.add(new data.Clause(Clause.mappingFromID2Desc.get(sid),twoDForm.format(Learner.finalWeight.get(s)),0));
 				lines.add(twoDForm.format(Learner.finalWeight.get(s)) + "," + Clause.mappingFromID2Desc.get(sid));
 				//lines.add(twoDForm.format(Learner.finalWeight.get(s)) + "," + Clause.mappingFromID2Desc.get(sid) + " //" + s);
 			}

@@ -1,8 +1,13 @@
 package data;
 
+import scala.Tuple2;
+
 import java.io.*;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.Random;
 
 public class DataSet implements Serializable {
 	
@@ -12,7 +17,25 @@ public class DataSet implements Serializable {
 	private String[] header = null; 	
 	
 	public DataSet(){}
-	
+
+	public static int partition(int partitonNum){
+		/*int[] partition_array = new int[partitonNum];
+		for(int i=0;i<partitonNum;i++){
+			partition_array[i] = i;
+		}*/
+		Random random = new Random();
+		return random.nextInt(partitonNum);
+	}
+
+	public static ArrayList<String> init(Tuple2<Integer, Iterable<String>> tuple2){
+		ArrayList<String> list = new ArrayList<>();
+		Iterator<String> iter = tuple2._2().iterator();
+		while (iter.hasNext()){
+			list.add(iter.next());
+		}
+		return list;
+	}
+
 	public void init(String fileURL,String splitString,boolean ifHeader){//check if the data has header
 		// read file content from file 读取文件内容
         FileReader reader;

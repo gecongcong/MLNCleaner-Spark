@@ -128,13 +128,13 @@ public class Util {
     }
 
     public static void main(String[] args) throws Exception {
-//        String readURL = "/home/gcc/IdeaProjects/Cleaner-Spark/dataSet/HAI/HAI-20.csv";
-//        String writeURL = "/home/gcc/IdeaProjects/Cleaner-Spark/dataSet/HAI/HAI-20(hasID).csv";
+//        String readURL = "/home/hadoop/IdeaProjects/Cleaner-Spark/dataSet/HAI/HAI-20.csv";
+//        String writeURL = "/home/hadoop/IdeaProjects/Cleaner-Spark/dataSet/HAI/HAI-20(hasID).csv";
 //        setLineID(readURL,writeURL);
         uploadToHdfs();
         //System.out.println(findLocalIP());
         //deleteFile();
-//        String url = "/home/gcc/IP/localIP.txt";
+//        String url = "/home/hadoop/IP/localIP.txt";
 //        getLocalIP(url);
     }
 }

@@ -1,14 +1,20 @@
 package data;
 
+import main.Main;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.*;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+import scala.Int;
+import util.TokenUtil;
 
 import java.io.*;
 import java.net.URI;
 import java.text.DecimalFormat;
 import java.util.*;
 
-public class Rule {
+public class Rule implements Serializable {
+    static final Logger log = LogManager.getLogger(Rule.class);
 
     String predicate = null;
     String value = null;
@@ -73,7 +79,62 @@ public class Rule {
         return header;
     }
 
-    public static void partitionData(String dataFile, int partitionNum, String dataName,
+    public static ArrayList<String> partitionData(ArrayList<String> datasetlist, int partitionNum, String dataName,
+                                                  ArrayList<String> rules, String newHeader, String[] oldHeader,
+                                                  ArrayList<ArrayList<String>> part_dataList) {
+
+        ArrayList<String> token_list = new ArrayList<>(partitionNum);
+        for (int i = 0; i < partitionNum; i++) {
+            String token = TokenUtil.getRandomFileName();//创建令牌
+            token_list.add(token);
+        }
+
+        try {
+            ArrayList<String> datalist = new ArrayList<>(datasetlist.size());
+            for (int i = 0; i < datasetlist.size(); i++) {
+                String tuple = datasetlist.get(i);
+                /*int index = curr.indexOf(",");
+                String tuple = curr.substring(index + 1);*/
+                datalist.add(tuple);
+            }
+
+            //partition
+            /*for (int i = 0; i < partitionNum; i++) {
+                System.out.println("  Begin partition <" + i + "> ...");
+                part_dataList.get(i).add(header);
+            }*/
+
+            //partition dataList
+            int size = datalist.size();
+            int part_i = 0;
+            int number = size / partitionNum;//每份的数据量
+            /*for (int i = 0; i < partitionNum; i++) {
+                part_dataList.add(new ArrayList<>(number));
+            }*/
+
+            for (int i = 0; i < size; i++) {
+                part_dataList.get(part_i).add(datalist.get(i));
+                if (part_i < partitionNum - 1 && i == number * (part_i + 1) - 1) {
+//                    dataBw[part_i].flush();
+//                    dataBw[part_i].close();
+                    log.info("\nBegin ground rules...\n");
+                    groundRules(newHeader, oldHeader, dataName, part_dataList.get(part_i), rules, token_list.get(part_i));
+//                    rules_parts.set(part_i, groundRules(newHeader, dataName, part_dataList.get(part_i), rules, token));
+                    part_i++;
+                } else if (part_i == partitionNum - 1 && i == size - 1) {
+//                    dataBw[part_i].flush();
+//                    dataBw[part_i].close();
+                    groundRules(newHeader, oldHeader, dataName, part_dataList.get(part_i), rules, token_list.get(part_i));
+//                    rules_parts.set(part_i, groundRules(newHeader, dataName, part_dataList.get(part_i), rules, token));
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return token_list;
+    }
+
+    /*public static void partitionData(String dataFile, int partitionNum, String dataName,
                                      ArrayList<String> rules, String newHeader) {
         try {
             BufferedWriter dataBw[] = new BufferedWriter[partitionNum];
@@ -84,10 +145,10 @@ public class Rule {
             String dst = dataFile;
             Configuration conf = new Configuration();
             FileSystem fs = FileSystem.get(URI.create(dst), conf);
-            
+
             FSDataInputStream is = fs.open(new Path(dst));
             BufferedReader br = new BufferedReader(new InputStreamReader(is));
-            
+
             String line;
             String header = br.readLine();  //read header
             header = header.substring(header.indexOf(",") + 1);
@@ -102,8 +163,8 @@ public class Rule {
             //partition
             for (int i = 0; i < partitionNum; i++) {
                 System.out.println("  Begin partition <" + i + "> ...");
-                File rulesWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
-                File dataWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
+                File rulesWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
+                File dataWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
                 if (!rulesWriteFile.exists()) {
                     rulesWriteFile.createNewFile();
                 }
@@ -144,23 +205,30 @@ public class Rule {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
+    }*/
 
-    public static void groundRules(String head, String dataName, ArrayList<String> dataList, ArrayList<String> rules, int part_i) {
+    //修改rules-new文件，不要写入文件，直接保存在内存中
+    public static void groundRules(String head, String[] fullheader, String dataName, ArrayList<String> dataList, ArrayList<String> rules, String token) {
+
+//        ArrayList<String> mln_part = new ArrayList<>();
+
         HashMap<String, GroundRule> map = new HashMap<>();
         String[] header = head.split(",");
         String predicateHead = "";
         for (String s : header) {
             predicateHead += s + "(value" + s + ")\n";
+//            mln_part.add(s + "(value" + s + ")");
         }
+//        mln_part.add("");
         for (int i = 0; i < dataList.size(); i++) {
-            String tmp = dataList.get(i);
+            String curr = dataList.get(i);
+            String tmp = curr.substring(curr.indexOf(",") + 1);
             String[] tuple = tmp.split(",");
             for (int k = 0; k < rules.size(); k++) {
                 String currentRule = rules.get(k);
-                for (int j = 0; j < header.length; j++) {
-                    if (currentRule.indexOf(header[j]) != -1) {
-                        currentRule = currentRule.replaceAll("value" + header[j], "\"" + tuple[j] + "\"");
+                for (int j = 0; j < fullheader.length; j++) {
+                    if (currentRule.indexOf(fullheader[j]) != -1) {
+                        currentRule = currentRule.replaceAll("value" + fullheader[j], "\"" + tuple[j] + "\"");
                     }
                 }
                 if (map.get(currentRule) == null) {
@@ -174,12 +242,22 @@ public class Rule {
         }
         //grounding rules and write to file '.gr'
         try {
-            String writeFile = "/home/gcc/experiment/dataSet/" + dataName + "/rules-new" + part_i + ".txt";
+            String writeFile = "/home/hadoop/experiment/dataSet/" + dataName + "/rules-new" + token + ".txt";
 //                    filename.replaceAll("trainData.csv", "rules-new" + part_i + "\\.txt");
             File writefile = new File(writeFile);
-            if (!writefile.exists()) {
+
+            if (writefile.exists()) {// 判断文件是否存在
+                System.out.println("File exists: " + writeFile);
+            } else if (!writefile.getParentFile().exists()) {// 判断目标文件所在的目录是否存在
+                // 如果目标文件所在的文件夹不存在，则创建父文件夹
+                System.out.println("create dir...");
+                if (!writefile.getParentFile().mkdirs()) {// 判断创建目录是否成功
+                    System.out.println("fail to create dir");
+                }
+            } else {
                 writefile.createNewFile();
             }
+
             FileWriter fw = new FileWriter(writefile);
             BufferedWriter bw = new BufferedWriter(fw);
             bw.write(predicateHead + "\n");
@@ -194,10 +272,11 @@ public class Rule {
                 map.get(key).weight = String.format("%.2f", weight);
                 String result = map.get(key).weight + "\t" + key + "\n";
                 bw.write(result);
+//                mln_part.add(result);
             }
             bw.flush();
             bw.close();
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -235,7 +314,6 @@ public class Rule {
 
 
     /**
-     * 閺夆晜鏌ㄥú鏍础閺囨岸鍤嬮悘鐐靛仦閿熺獤鍐╁?抽柣銊ュ婢у秹宕烽妸銉ョ仚闁汇劌瀚槐顏堝矗閿燂拷
      *
      * @return Attribute Index
      */
@@ -323,8 +401,8 @@ public class Rule {
             HashMap<Integer, String> dataset[] = new HashMap[partitionNum];
             //初始化rule-new.txt和data-new.txt
             for (int i = 0; i < partitionNum; i++) {
-                File rulesWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
-                File dataWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
+                File rulesWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
+                File dataWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
                 if (!rulesWriteFile.exists()) {
                     rulesWriteFile.createNewFile();
                 }
@@ -421,8 +499,8 @@ public class Rule {
             HashMap<Integer, String> dataset[] = new HashMap[partitionNum];
             //初始化rule-new.txt和data-new.txt
             for (int i = 0; i < partitionNum; i++) {
-                File rulesWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
-                File dataWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
+                File rulesWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
+                File dataWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
                 if (!rulesWriteFile.exists()) {
                     rulesWriteFile.createNewFile();
                 }
@@ -573,7 +651,7 @@ public class Rule {
         //Write combined rules to a new File
         Iterator<Map.Entry<String, String>> iter = clean_map.entrySet().iterator();
         try {
-            String writeFile = "/home/gcc/experiment/dataSet/" + dataName + "/groundRules.txt";
+            String writeFile = "/home/hadoop/experiment/dataSet/" + dataName + "/groundRules.txt";
             File writefile = new File(writeFile);
             FileWriter fw = new FileWriter(writefile);
             BufferedWriter bw = new BufferedWriter(fw);
@@ -614,10 +692,10 @@ public class Rule {
             while ((tmp = br.readLine()) != null) {
                 if (i == 0) {
                     i++;
-                    header = tmp.replaceAll(" ", "").split(",");
+                    header = tmp.split(",");
                     continue;
                 } else {
-                    String[] tuple = tmp.replaceAll(" ", "").split(",");
+                    String[] tuple = tmp.split(",");
                     for (int k = 0; k < rules.size(); k++) {
                         String currentRule = rules.get(k);
                         for (int j = 0; j < header.length; j++) {
@@ -663,8 +741,8 @@ public class Rule {
             BufferedWriter rulesBw[] = new BufferedWriter[partitionNum];
             BufferedWriter dataBw[] = new BufferedWriter[partitionNum];
             for (int i = 0; i < partitionNum; i++) {
-                File rulesWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
-                File dataWriteFile = new File("/home/gcc/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
+                File rulesWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/rules-new" + i + ".txt");
+                File dataWriteFile = new File("/home/hadoop/experiment/dataSet/" + dataName + "/data-new" + i + ".txt");
                 if (!rulesWriteFile.exists()) {
                     rulesWriteFile.createNewFile();
                 }
@@ -905,7 +983,7 @@ public class Rule {
 //            br.readLine();
             while ((line = br.readLine()) != null && line.length() != 0) {
                 String prob = line.substring(0, 4);
-                String mln = line.substring(5).replaceAll(" ", "");
+                String mln = line.substring(5);
                 map.put(mln, prob);//<k,v>=<mln,prob>
             }
             br.close();
@@ -959,6 +1037,75 @@ public class Rule {
             e.printStackTrace();
         }
         return list;
+    }
+
+
+    public void formatEvidence(ArrayList<Tuple> tupleList, ArrayList<Integer> newHeaderList, String[] header, String outFile) throws IOException {
+        System.out.println(">> Write Evidence to file (evidence.db) ...");
+        int index = 1;
+        class IndexAndCount {
+            int count;
+            int index;
+            int headerIndex;
+
+            IndexAndCount(int count, int headerIndex) {
+                this.count = count;
+                this.index = 0;
+                this.headerIndex = headerIndex;
+            }
+
+            public void increase() {
+                count++;
+            }
+
+            public void setIndex(int index) {
+                this.index = index;
+            }
+
+            public double getCount() {
+                return (double) count;
+            }
+
+            public int getIndex() {
+                return index;
+            }
+
+            public int getHeaderIndex() {
+                return headerIndex;
+            }
+        }
+
+        //记录一个属性下所有的值和对应的出现次数，和对应的 属性索引
+        HashMap<String, IndexAndCount> map = new HashMap<>();
+
+        for (int i = 0; i < newHeaderList.size(); i++) {
+            for (int k = 0; k < tupleList.size(); k++) {
+                String item = tupleList.get(k).getContext()[newHeaderList.get(i)];
+                if (!map.containsKey(item)) {
+                    map.put(item, new IndexAndCount(1, newHeaderList.get(i)));
+                } else {
+                    map.get(item).increase();
+                }
+            }
+        }
+
+        String content = "";
+        for (Map.Entry<String, IndexAndCount> entry : map.entrySet()) {
+
+            if (entry.getValue().getIndex() == 0) { //这个是标志entry的位置
+                entry.getValue().setIndex(index);
+                index++;
+            }
+            double pre = entry.getValue().getCount() / tupleList.size(); // 属性值占的百分比
+            pre += 0.0001;
+            if (pre > 1) pre = 1;
+
+            DecimalFormat format = new DecimalFormat("#0.0000");
+            content += format.format(pre) + " ";
+            content += header[entry.getValue().getHeaderIndex()] + "(\"" + entry.getKey() + "\")\n";
+        }
+        writeToFile(content, outFile);
+        System.out.println(">> Writing Evidence.db Completed! URL = " + outFile);
     }
 
     /**
@@ -1193,7 +1340,7 @@ public class Rule {
         this.value = value;
     }
 
-    public static void writeToFile(String content, String outFile) {    //闁硅泛銈祇ntent闁汇劌瀚崬瀵革拷鍦攰閹风兘宕濋悩鎻掓櫢闁稿繈鍎查弸鍐╃閿燂拷
+    public static void writeToFile(String content, String outFile) {
         BufferedWriter out = null;
         try {
             out = new BufferedWriter(new OutputStreamWriter(
@@ -1322,7 +1469,20 @@ public class Rule {
     /**
      * Init Data
      */
+    public ArrayList<Tuple> initData(ArrayList<String> dataset_list, String splitString) {//check if the data has header
+        ArrayList<Tuple> tupleList = new ArrayList<>();
+        for (String str : dataset_list) {
+            int tupleID = Integer.parseInt(str.substring(0, str.indexOf(",")));
+            String tuple = str.substring(str.indexOf(",") + 1);
+            Tuple t = new Tuple();
+            t.init(tuple, splitString, tupleID);//init the tuple,split with ","
+            tupleList.add(t);
+        }
+        return tupleList;
+    }
+
     public void initData(String fileURL, String splitString, boolean ifHeader) {//check if the data has header
+
         // read file content from file
         try {
             Configuration conf = new Configuration();

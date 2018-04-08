@@ -96,7 +96,7 @@
     <orderEntry type="library" name="Maven: org.spark-project:pyrolite:2.0.1" level="project" />
     <orderEntry type="library" name="Maven: net.sf.py4j:py4j:0.8.1" level="project" />
     <orderEntry type="library" name="Maven: org.postgresql:postgresql:9.3-1104-jdbc41" level="project" />
-    <orderEntry type="library" name="Maven: info.debatty:java-string-similarity:1.0.1" level="project" />
+    <orderEntry type="library" name="Maven: info.debatty:java-string-similarity:1.1.0" level="project" />
     <orderEntry type="library" name="Maven: net.jcip:jcip-annotations:1.0" level="project" />
     <orderEntry type="library" name="Maven: org.antlr:antlr4:4.7.1" level="project" />
     <orderEntry type="library" name="Maven: org.antlr:antlr4-runtime:4.7.1" level="project" />
@@ -112,7 +112,7 @@
     <orderEntry type="module-library">
       <library name="Maven: jdk:tools:5.0">
         <CLASSES>
-          <root url="jar:///usr/lib/jvm/java-8-oracle/lib/tools.jar!/" />
+          <root url="jar:///usr/lib/jvm/java-1.8.0-openjdk-amd64/lib/tools.jar!/" />
         </CLASSES>
         <JAVADOC />
         <SOURCES />
